@@ -31,6 +31,27 @@ async def shutdown_event():
     close(db, cursor)
 
 
+@app.get("/isdatavalid")
+async def is_elder(request: fastapi.Request):
+    params = request.query_params
+
+
+
+
+    if params.get("id", None) or params.get("code", None):
+        cursor.execute("SELECT * FROM Grupp WHERE bossId=={0} AND name=={1}".format(params["id"], params["code"]))
+        db.commit()
+        print(cursor.fetchall())
+        return True
+        # try:
+        #     cursor.execute(params["command"])
+        #     db.commit()
+        #     return cursor.fetchall()
+        # except:
+        #     print("error")
+    return {"type":"error"}
+
+
 # def main():
 #     db, cursor = start_db()
 #
