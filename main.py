@@ -42,7 +42,10 @@ async def is_elder(request: fastapi.Request):
         cursor.execute("SELECT * FROM Grupp WHERE bossId=={0} AND name=={1}".format(params["id"], params["code"]))
         db.commit()
         print(cursor.fetchall())
-        return True
+        if cursor.fetchall() != []:
+            return {"type": "answer", "answer": True, "groupName": cursor.fetchall()[3]}
+        else:
+            return {"type": "answer", "answer": False}
         # try:
         #     cursor.execute(params["command"])
         #     db.commit()
