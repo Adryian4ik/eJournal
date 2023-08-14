@@ -18,6 +18,7 @@ async def startup_event():
 async def api_data(request: fastapi.Request):
     params = request.query_params
     if params.get("command", None):
+        cursor.row_factory = sqlite3.Row
         print(str(params["command"]))
         cursor.execute(str(params["command"]))
         db.commit()
