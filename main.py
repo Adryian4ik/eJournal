@@ -3,8 +3,16 @@ import fastapi
 import cryptography.fernet as Fernet
 db, cursor = start_db()
 
-cipher_suite = Fernet(b'3h64pUxWKFCRNgZ9hto2SfL6JwgmrWryRTIBEGfL3mU=')
+cipher_suite = Fernet.Fernet( b'3h64pUxWKFCRNgZ9hto2SfL6JwgmrWryRTIBEGfL3mU=')
 app = fastapi.FastAPI()
+
+
+
+@app.on_event("startup")
+async def startup_event():
+    print("Приложение запущено! Выполняем начальную инициализацию...")
+
+
 
 @app.get("/")
 async def api_data(request: fastapi.Request):
@@ -40,7 +48,8 @@ async def is_elder(request: fastapi.Request):
 
     if params.get("id", None) or params.get("code", None):
         group = cipher_suite.decrypt(params["code"]).decode()
-        cursor.execute("SELECT * FROM Grupp WHERE bossId=={0} AND name=={1}".format(params["id"], group))
+        print(group)
+        cursor.execute("SELECT * FROM Grupp WHERE bossId=={0} AND name==\"{1}\"".format(params["id"], group))
         db.commit()
         db_answer = cursor.fetchall()
         print(db_answer)
