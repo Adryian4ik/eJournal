@@ -1,9 +1,9 @@
 from dbProcess import *
 import fastapi
-
-
+import cryptography.fernet as Fernet
 db, cursor = start_db()
 
+cipher_suite = Fernet(b'3h64pUxWKFCRNgZ9hto2SfL6JwgmrWryRTIBEGfL3mU=')
 app = fastapi.FastAPI()
 
 @app.get("/")
@@ -39,17 +39,13 @@ async def is_elder(request: fastapi.Request):
 
 
     if params.get("id", None) or params.get("code", None):
-        cursor.execute("SELECT * FROM Grupp WHERE bossId=={0} AND name=={1}".format(params["id"], params["code"]))
+        group = cipher_suite.decrypt(params["code"]).decode()
+        cursor.execute("SELECT * FROM Grupp WHERE bossId=={0} AND name=={1}".format(params["id"], group))
         db.commit()
-        print(cursor.fetchall())
-        if cursor.fetchall() != []:
-            return {"type": "answer", "answer": True, "groupName": cursor.fetchall()[3]}
-        else:
-            return {"type": "answer", "answer": False}
-        # try:
-        #     cursor.execute(params["command"])
-        #     db.commit()
-        #     return cursor.fetchall()
+        db_answer = cursor.fetchall()
+        print(db_answer)
+        if len(db_answer) != 0:
+            return {"type": "answer", "answer": True, "groupName": db_answer[0][2]}
         # except:
         #     print("error")
     return {"type":"error"}
