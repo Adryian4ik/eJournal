@@ -1,3 +1,8 @@
+import cryptography.fernet
+from config import cipher_suite
+from fastapi import HTTPException
+
+
 def get_value(value):
     if isinstance(value, str):
         return f"'{value}', " if value else ""
@@ -42,3 +47,19 @@ def predicates(Class):
         if key != 'id':
             result += predicate(key, dictionary[key])
     return result[:-2]
+
+
+def check_token(token):
+    try:
+        decoded = cipher_suite.decrypt(token).decode()
+    except cryptography.fernet.InvalidToken:
+        raise HTTPException(status_code=401, detail="Не корректный токен")
+    return decoded
+
+
+def check_access(decoded, cursor):
+    cursor.execute(f"SELECT id FROM 'Group' WHERE name='{decoded}'")
+    checkId = cursor.fetchone()
+    if not checkId:
+        raise HTTPException(status_code=403, detail="Нет доступа")
+    return checkId[0]
