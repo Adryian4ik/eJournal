@@ -7,7 +7,7 @@ class Array(BaseModel):
 
 class Login(BaseModel):
     token: str
-    groupName: str
+    id: int
 
 
 class PassModel(BaseModel):

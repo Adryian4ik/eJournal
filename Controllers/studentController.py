@@ -158,14 +158,15 @@ async def get_group_info(token: Annotated[str, Depends(oauth2_scheme)]):
 @app.post("/auth/login")
 async def authorization(login_: Login):
     decoded = decode_token(login_.token)
-    cursor.execute(f"SELECT id FROM 'Group' WHERE name='{decoded}'")
-    data = cursor.fetchone()[0]
-    if decoded == login_.groupName and data:
+    cursor.execute(f"SELECT id, name, bossId FROM 'Group' WHERE name='{decoded}'")
+    data = cursor.fetchone()
+    if data and data[2] == login_.id:
         return {
             "detail": "success",
-            "groupId": data,
+            "groupId": data[0],
             "token": login_.token,
-            "groupName": login_.groupName
+            "groupName": data[1],
+            "bossId": login_.id
         }
     else:
         raise HTTPException(status_code=401, detail="Error")
@@ -174,15 +175,16 @@ async def authorization(login_: Login):
 @app.get("/auth/me")
 async def get_me(token: Annotated[str, Depends(oauth2_scheme)]):
     decoded = decode_token(token)
-    cursor.execute(f"SELECT id FROM 'Group' WHERE name='{decoded}'")
-    data = cursor.fetchone()[0]
+    cursor.execute(f"SELECT id, bossId FROM 'Group' WHERE name='{decoded}'")
+    data = cursor.fetchone()
     if not data:
         raise HTTPException(status_code=401, detail="Error")
     else:
         return {
             "detail": "success",
-            "groupId": data,
+            "groupId": data[0],
             "token": token,
-            "groupName": decoded
+            "groupName": decoded,
+            "bossId": data[1]
         }
 
