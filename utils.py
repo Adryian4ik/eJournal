@@ -49,7 +49,7 @@ def predicates(Class):
     return result[:-2]
 
 
-def check_token(token):
+def decode_token(token):
     try:
         decoded = cipher_suite.decrypt(token).decode()
     except cryptography.fernet.InvalidToken:
@@ -57,7 +57,7 @@ def check_token(token):
     return decoded
 
 
-def check_access(decoded, cursor):
+def group_id(decoded, cursor):
     cursor.execute(f"SELECT id FROM 'Group' WHERE name='{decoded}'")
     checkId = cursor.fetchone()
     if not checkId:
