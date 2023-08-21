@@ -10,11 +10,6 @@ class Login(BaseModel):
     id: int
 
 
-class PassModel(BaseModel):
-    start: str
-    end: str
-
-
 class TgIdUpdate(BaseModel):
     id: int
     token: str
@@ -24,7 +19,6 @@ class TgIdUpdate(BaseModel):
 class AddDocModel(BaseModel):
     start: str | None = None
     end: str | None = None
-    date: str | None = None
-    scheduleId: int | None = None
-    docId: int
+    passId: int | None = None
+    docId: int | None = None
     type: int

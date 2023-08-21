@@ -18,12 +18,14 @@ async def get_student(id_: int):
 
 @app.get("/studentTg/{id_}")
 async def get_student(id_: int):
-    command = f"SELECT * FROM 'Student' WHERE tgId = {id_}\n"
+    command = (f"SELECT * FROM 'Student' " 
+               f"join main.'Group' G on G.id = Student.groupId "
+               f"WHERE tgId = {id_}\n")
     cursor.row_factory = sqlite3.Row
     cursor.execute(command)
     data = cursor.fetchone()
     if not data:
-        raise HTTPException(status_code=400, detail="Некорректный tgId студента")
+        raise HTTPException(status_code=400, detail="Wrong TgId")
     return {"detail": data}
 
 
@@ -37,7 +39,7 @@ async def create_student(student_: Student, token: Annotated[str, Depends(oauth2
     command = "INSERT INTO 'Student' (" + fields(student_) + ") VALUES (" + values(student_) + ")"
     cursor.execute(command)
     db.commit()
-    return {"detail": "success", "student": student_}
+    return {"detail": student_}
 
 
 @app.post("/students", status_code=201)
@@ -55,12 +57,27 @@ async def create_students(items: Array, token: Annotated[str, Depends(oauth2_sch
             cursor.execute(command)
     db.commit()
     if not errors:
-        return {"detail": "Успешно создано"}
+        return {"detail": items}
     else:
-        return {"detail": f"Некоторые идентификаторы заняты: {str(errors)}"}
+        return {"status": "Error", "detail": f"Some id's are taken: {str(errors)}"}
 
 
-@app.patch("/student/")
+@app.post("/studentTg")
+async def set_tgId(data: TgIdUpdate):
+    groupId = decode_token(data.token)
+    cursor.execute(f"SELECT tgId FROM 'Student' WHERE groupId={groupId} AND id={data.id}")
+    checkData = cursor.fetchone()
+    if not checkData:
+        raise HTTPException(status_code=400, detail="Incorrect token or id")
+    if checkData[0]:
+        raise HTTPException(status_code=403)
+
+    cursor.execute(f"update Student set tgId={data.tgId} where id={data.id}")
+    db.commit()
+    return {"status": "Success"}
+
+
+@app.patch("/student")
 async def update_student(student_: Student, token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
     student_.groupId = bossGroupId
@@ -68,18 +85,18 @@ async def update_student(student_: Student, token: Annotated[str, Depends(oauth2
     cursor.execute(f"SELECT groupId FROM 'Student' WHERE id={student_.id}")
     checkId = cursor.fetchone()[0]
     if not checkId:
-        raise HTTPException(status_code=404, detail="Студента с таким id не существует")
+        raise HTTPException(status_code=404, detail="Wrong id")
 
     if bossGroupId != checkId[0]:
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403)
 
     command = "UPDATE 'Student' SET " + predicates(student_) + f" WHERE id = {student_.id}"
     cursor.execute(command)
     db.commit()
-    return {"message": "Успешно обновлено", "detail": student_}
+    return {"detail": student_}
 
 
-@app.patch("/students/")
+@app.patch("/students")
 async def update_students(items: Array, token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
 
@@ -98,35 +115,23 @@ async def update_students(items: Array, token: Annotated[str, Depends(oauth2_sch
         cursor.execute(command)
     db.commit()
     if not errors:
-        return {"message": "Успешно обновлено", "detail": items}
+        return {"detail": items}
     else:
-        return {"detail": f"Не удалось обновить: {str(errors)}\n"
-                          f"{f'Нет доступа к {str(not_access)}' if not_access else ''}"}
+        return {"detail": f"Failed to update: {str(errors)}\n"
+                          f"{f'No access to {str(not_access)}' if not_access else ''}"}
 
 
-@app.post("/student/tg/")
-async def set_tgId(data: TgIdUpdate):
-    groupId = decode_token(data.token)
-    cursor.execute(f"SELECT * FROM 'Student' WHERE groupId={groupId} AND id={data.id}")
-    if not cursor.fetchone():
-        raise HTTPException(status_code=400, detail="Incorrect token or id")
-
-    cursor.execute(f"update Student set tgId={data.tgId} where id={data.id}")
-    db.commit()
-    return {"detail": "TgId успешно добавлен"}
-
-
-@app.delete("/student/")
+@app.delete("/student")
 async def delete_student(student_: Student, token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
 
     cursor.execute(f"SELECT groupId From 'Student' WHERE id = {student_.id}")
     if bossGroupId != cursor.fetchone()[0]:
-        raise HTTPException(status_code=403, detail="Нет доступа")
+        raise HTTPException(status_code=403)
 
     cursor.execute(f"DELETE FROM 'Student' WHERE id = {student_.id}")
     db.commit()
-    return {"detail": "Успешно удалено"}
+    return {"status": "Success"}
 
 
 @app.delete("/students")
@@ -138,7 +143,7 @@ async def delete_students(items: Array, token: Annotated[str, Depends(oauth2_sch
         if bossGroupId == cursor.fetchone()[0]:
             cursor.execute(f"DELETE FROM 'Student' WHERE id = {student_.id}")
     db.commit()
-    return {"detail": "Успешно удалено"}
+    return {"status": "Success"}
 
 
 @app.get("/groupinfo")
@@ -152,7 +157,7 @@ async def get_group_info(token: Annotated[str, Depends(oauth2_scheme)]):
     data = cursor.fetchall()
     if len(data) == 0:
         raise HTTPException(status_code=404, detail="Нет студентов такой группы")
-    return {"detail": "success", "students": data}
+    return {"detail": data}
 
 
 @app.post("/auth/login")
@@ -162,7 +167,6 @@ async def authorization(login_: Login):
     data = cursor.fetchone()
     if data and data[2] == login_.id:
         return {
-            "detail": "success",
             "groupId": data[0],
             "token": login_.token,
             "groupName": data[1],
@@ -181,10 +185,8 @@ async def get_me(token: Annotated[str, Depends(oauth2_scheme)]):
         raise HTTPException(status_code=401, detail="Error")
     else:
         return {
-            "detail": "success",
             "groupId": data[0],
             "token": token,
             "groupName": decoded,
             "bossId": data[1]
         }
-
