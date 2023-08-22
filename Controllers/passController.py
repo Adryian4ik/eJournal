@@ -31,7 +31,7 @@ async def add_document(studentId_: int, data: AddDocModel, token: Annotated[str,
         raise HTTPException(status_code=400, detail="Incorrect data")
 
     command = (f"update Pass set type={data.type}" +
-               (f", document={data.docId}" if data.docId else "") +
+               (f", documentId={data.docId}" if data.docId else "") +
                (f" where '{data.start}' <= date AND date <= '{data.end}' " if data.start and data.end else
                 f" where id='{data.passId}' ") +
                f"and studentId={studentId_}")
@@ -53,40 +53,54 @@ async def delete_pass(id_: int, token: Annotated[str, Depends(oauth2_scheme)]):
     return {"status": "Success"}
 
 
-@app.get("/pass/{studentId}/{id_}")
-async def get_one_pass(studentId: int, id_: int):
+@app.get("/pass/{studentId}")
+async def get_pass(studentId: int, req: Request):
+    params = dict(req.query_params)
+    if not (params.get('start') and params.get('end')) and not params.get('id'):
+        raise HTTPException(status_code=400, detail="Enter ('start' and 'end') or 'id' params")
+
     cursor.row_factory = sqlite3.Row
-    cursor.execute(f"select Pass.id, S.lastname, S.firstname, S.patronymic, S.tgId, "
-                   f"Pass.date, S2.numberOfLesson, L.name LessonName, pt.name type, Pass.documentId "
-                   f"from Pass "
-                   f"join pass_type pt on pass.type = pt.id "
-                   f"join Student S on pass.studentId = S.id "
-                   f"join Schedule S2 on pass.scheduleId = S2.id "
-                   f"join Lesson L on S2.lessonId = L.id "
-                   f"WHERE studentId={studentId} AND Pass.id={id_}")
-    return {"detail": cursor.fetchone()}
+    command = (f"select Pass.id, Pass.studentId, S.lastname, S.firstname, S.patronymic, S.tgId, "
+               f"Pass.date, S2.numberOfLesson, L.name LessonName, Pass.type typeId, pt.name type, Pass.documentId "
+               f"from Pass "
+               f"join pass_type pt on pass.type = pt.id "
+               f"join Student S on pass.studentId = S.id "
+               f"join Schedule S2 on pass.scheduleId = S2.id "
+               f"join Lesson L on S2.lessonId = L.id "
+               f"WHERE Pass.studentId={studentId} ")
+    if params.get('id'):
+        command += f"and Pass.id={params['id']}"
+    else:
+        command += f"and '{params['start']}' <= date and date <= '{params['end']}'"
+
+    cursor.execute(command)
+    return {"detail": cursor.fetchall()}
 
 
 @app.get("/pass")
-async def get_pass_by_period(req: Request):
+async def get_pass_by_period(req: Request, token: Annotated[str, Depends(oauth2_scheme)]):
+    bossGroupId = group_id(decode_token(token), cursor)
     params = dict(req.query_params)
     if not params.get('start') or not params.get('end'):
         raise HTTPException(status_code=400, detail="Enter 'start' and 'end' params")
     start, end = params['start'], params['end']
 
-    if not params.get('groupId') or not params.get('id'):
-        raise HTTPException(status_code=400, detail="Enter 'groupId' or 'id' parameter")
+    if not params.get('groupId') and not params.get('studentId'):
+        raise HTTPException(status_code=400, detail="Enter 'groupId' or 'studentId' parameter")
 
-    command = (f"select Pass.id, S.lastname, S.firstname, S.patronymic, S.tgId, "
-               f"Pass.date, S2.numberOfLesson, L.name, pt.name type, Pass.documentId "
+    if params.get('groupId') and bossGroupId != int(params['groupId']):
+        raise HTTPException(status_code=403)
+
+    command = (f"select Pass.id, Pass.studentId, S.lastname, S.firstname, S.patronymic, S.tgId, "
+               f"Pass.date, S2.numberOfLesson, L.name LessonName, Pass.type typeId, pt.name type, Pass.documentId "
                f"from Pass "
                f"join pass_type pt on pass.type = pt.id "
                f"join Student S on pass.studentId = S.id "
                f"join Schedule S2 on pass.scheduleId = S2.id "
-               f"join main.Lesson L on S2.lessonId = L.id "
+               f"join Lesson L on S2.lessonId = L.id "
                f"where '{start}' <= date and date <= '{end}' ")
     command = command + (f"and S.groupId={params['groupId']} " if params.get('groupId') else
-                         (f"and Pass.studentId={params['id']}" if params.get('id') else ""))
+                         (f"and Pass.studentId={params['studentId']}" if params.get('studentId') else ""))
     cursor.row_factory = sqlite3.Row
     cursor.execute(command)
     data = cursor.fetchall()

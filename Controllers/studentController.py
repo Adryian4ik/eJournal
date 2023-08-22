@@ -87,10 +87,10 @@ async def update_student(student_: Student, token: Annotated[str, Depends(oauth2
     if not checkId:
         raise HTTPException(status_code=404, detail="Wrong id")
 
-    if bossGroupId != checkId[0]:
+    if bossGroupId != checkId:
         raise HTTPException(status_code=403)
 
-    command = "UPDATE 'Student' SET " + predicates(student_) + f" WHERE id = {student_.id}"
+    command = "UPDATE 'Student' SET " + predicates(student_, includeNull=True) + f" WHERE id = {student_.id}"
     cursor.execute(command)
     db.commit()
     return {"detail": student_}

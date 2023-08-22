@@ -10,7 +10,9 @@ def get_value(value):
         return f"{value}, " if value else ""
 
 
-def predicate(name, value):
+def predicate(name, value, includeNull):
+    if includeNull and not value:
+        return f"{name} = Null, "
     if isinstance(value, str):
         return f"{name} = '{value}', " if value else ""
     else:
@@ -40,12 +42,12 @@ def values(Class):
     return result[:-2]
 
 
-def predicates(Class):
+def predicates(Class, includeNull=False):
     dictionary = dict(Class)
     result = ""
     for key in dictionary:
         if key != 'id':
-            result += predicate(key, dictionary[key])
+            result += predicate(key, dictionary[key], includeNull)
     return result[:-2]
 
 
