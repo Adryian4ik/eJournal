@@ -38,23 +38,28 @@ public class Student
         CreditBookNumber = creditBookNumber;
         TelegramID = tgID;
         GroupID = groupID;
-        
-        if (!string.IsNullOrWhiteSpace(surname))
-            Lastname = (string)surname.Clone();
-        else Lastname = EmptyField;
-        
-        if (!string.IsNullOrWhiteSpace(Firstname))
-            Firstname = (string)firstname.Clone();
-        else Firstname = EmptyField;
 
-        if (!string.IsNullOrWhiteSpace(Patronymic))
-            Patronymic = (string)patronymic.Clone();
-        else Patronymic = EmptyField;
+        Lastname = CheckString(surname);
+
+        Firstname = CheckString(firstname);
+
+        Patronymic = CheckString(patronymic);
+
+        string CheckString(string field)
+        {
+            if (!string.IsNullOrWhiteSpace(field)) return (string)field.Clone();
+            else return EmptyField;
+        }
     }
     
     public override string ToString()
     {
-        return
-            $"Номер зачётной книжки: {CreditBookNumber}\nTelegram ID: {TelegramID}\nГруппа: {GroupID}\nФамилия: {Lastname}\nИмя: {Firstname}\nОтчество: {Patronymic}";
+        return $"""
+             Номер зачётной книжки: {CreditBookNumber}
+             Группа: {GroupID}
+             Фамилия: {Lastname}
+             Имя: {Firstname}
+             Отчество: {Patronymic}
+             """;
     }
 }

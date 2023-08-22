@@ -24,24 +24,24 @@ public class TelegramBotCommand
 {
     private ITelegramBotClient client;
     private BotCommand _command;
-    private Func<ITelegramBotClient, Update, Task<bool>> _commandAction;
+    private Func<CommandContext, Task<bool>> _commandAction;
     
     public BotCommand Command
     {
         get => _command;
     }
     
-    public TelegramBotCommand(ITelegramBotClient botClient, string command, string description, Func<ITelegramBotClient, Update, Task<bool>> reaction)
+    public TelegramBotCommand(ITelegramBotClient botClient, string command, string description, Func<CommandContext, Task<bool>> reaction)
     {
         client = botClient;
         _command = new BotCommand();
         _command.Command = (string)command.Clone();
         _command.Description = (string)description.Clone();
-        _commandAction = (Func<ITelegramBotClient, Update, Task<bool>>)reaction.Clone();
+        _commandAction = (Func<CommandContext, Task<bool>>)reaction.Clone();
     }
 
-    public async Task<bool> Execute(Update update)
+    public async Task<bool> Execute(CommandContext context)
     {
-        return await _commandAction.Invoke(client, update);
+        return await _commandAction.Invoke(context);
     }
 }

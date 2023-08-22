@@ -3,29 +3,53 @@ using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Types.InlineQueryResults;
 using Telegram.Bot.Types.ReplyMarkups;
 using TelegramBotEJournal;
 using TelegramBotEJournal.Commands;
+using TelegramBotEJournal.Entities;
 
 try
 {
-    var botClient = new TelegramBotClient("6238204903:AAGC0cSEzOb1w5_zpAC1OmB--ZcoBjNAe4s");
+    var tokenPath = Path.Combine(Environment.CurrentDirectory, "Token");
+    if (!System.IO.File.Exists(tokenPath) || string.IsNullOrWhiteSpace(System.IO.File.ReadAllText(tokenPath)))
+    {
+        Console.Write("Введите токен бота: ");
+        var token = Console.ReadLine();
+        System.IO.File.WriteAllText(tokenPath, token);
+    }
+    
+    Console.WriteLine("Авторизация бота...");
+    
+    var botClient = new TelegramBotClient(System.IO.File.ReadAllText(tokenPath));
+    if (!await botClient.TestApiAsync())
+    {
+        Console.WriteLine("Проверьте правильность введенного токена в файле 'Token'");
+        return;
+    }
+    Console.WriteLine("Успешно!");
     
     using CancellationTokenSource cts = new ();
 
     Console.WriteLine("Настройка кнопки Меню...");
+    
+    /*WebAppInfo wai = new WebAppInfo();
+    wai.Url = "https://45.8.230.244:8080/";
+    MenuButtonWebApp mbwa = new MenuButtonWebApp();
+    mbwa.Text = "Starosta panel";
+    mbwa.WebApp = wai;
+    await botClient.SetChatMenuButtonAsync(null, mbwa);*/
+    
     await botClient.SetChatMenuButtonAsync(null, new MenuButtonCommands());
     
     Console.WriteLine("Успешно!\nНастройка команд бота...");
 
     List<TelegramBotCommand> commands = new List<TelegramBotCommand>();
-    commands.Add(new TelegramBotCommand(botClient, "me", "Краткая информация о студенте", async (client, update) =>
+    commands.Add(new TelegramBotCommand(botClient, "me", "Краткая информация о студенте", async (_context) =>
     {
         try
         {
-            await client.SendTextMessageAsync(update.Message.Chat.Id,
-                                              (await HostApiAccess.GetStudent(update.Message.Chat.Id)).ToString(),
+            await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
+                                              _context.User.ToString(),
                                               cancellationToken: cts.Token);
         }
         catch (Exception e)
@@ -37,18 +61,16 @@ try
     }));
     
     commands.Add(new TelegramBotCommand(botClient, "todaypasses", "Информация о сегодняшних пропусках",
-                                        async (client, update) =>
+                                        async (_context) =>
                                         {
                                             try
                                             {
-                                                var student = await HostApiAccess.GetStudent(update.Message.Chat.Id);
-                                                if (student.TelegramID == -1) return false;
-                                                var passes = await HostApiAccess.GetPasses(student.ID, DateTime.Now);
-                                                string answer = string.Join("\n\n", passes.Select(x => x.ToString()));
+                                                var passes = await HostApiAccess.GetPassesByStudentID(_context.User.ID, DateOnly.FromDateTime(DateTime.Now), DateOnly.FromDateTime(DateTime.Now));
+                                                string answer = string.Join("\n\n", passes);
 
                                                 if (string.IsNullOrWhiteSpace(answer)) answer = "Пропусков нет";
                                                 
-                                                await client.SendTextMessageAsync(update.Message.Chat.Id,
+                                                await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
                                                  answer,
                                                  cancellationToken: cts.Token);
                                             }
@@ -62,45 +84,22 @@ try
                                         }));
     
     commands.Add(new TelegramBotCommand(botClient, "passes", "Информация о пропусках за определенный день",
-                                        async (client, update) =>
+                                        async (_context) =>
                                         {
                                             try
                                             {
-                                                var student = await HostApiAccess.GetStudent(update.Message.Chat.Id);
-                                                if (student.TelegramID == -1) return false;
                                                 DateTime date;
-                                                if (!DateTime.TryParse(update.Message.Text.Split(' ')[^1], out date))
+                                                if (!DateTime.TryParse(_context.Message.Text.Split(' ')[^1], out date))
                                                     return false;
-                                                var passes = await HostApiAccess.GetPasses(student.ID, date);
-                                                string answer = string.Join("\n\n", passes.Select(x => x.ToString()));
+                                                //var passes = await HostApiAccess.GetPasses(_context.User.ID, date);
+                                                //string answer = string.Join("\n\n", passes.Select(x => x.ToString()));
 
+                                                string answer = "";
+                                                
                                                 if (string.IsNullOrWhiteSpace(answer)) answer = "Пропусков нет";
-
-                                                List<List<IKeyboardButton>> buttons = new List<List<IKeyboardButton>>();
                                                 
-                                                DateTime buf = new DateTime(DateTime.Now.Year, DateTime.Now.Month, 1);
-                                                for (var i = 1;
-                                                     i != DateTime.Now.Day;
-                                                     i += 1)
-                                                {
-                                                    if(i % 3 == 1) buttons.Add(new ());
-                                                    buttons.Last().Add(new KeyboardButton(string.Join("", buf.ToString().TakeWhile(x => x != ' '))));
-                                                    buf = buf.AddDays(1);
-                                                }
-                                                buttons.Last().Add(new InlineKeyboardButton("asda"));
-                                                
-                                                ReplyKeyboardMarkup rkm = new ReplyKeyboardMarkup(buttons);
-                                                
-                                                /*InlineKeyboardButton ikb = new InlineKeyboardButton("Next");
-                                                ikb.CallbackData = $"/passes {date + new TimeSpan(1, 0, 0, 0)}";
-                                                InlineKeyboardMarkup ikm = new InlineKeyboardMarkup(new[]
-                                                {
-                                                    new[] { ikb },
-                                                });*/
-                                                
-                                                var result = await client.SendTextMessageAsync(update.Message.Chat.Id,
-                                                 answer, 
-                                                 replyMarkup: rkm,
+                                                var result = await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
+                                                 answer,
                                                  cancellationToken: cts.Token);
                                             }
                                             catch (Exception e)
@@ -114,11 +113,12 @@ try
     
     await botClient.SetMyCommandsAsync(commands.Select(x => x.Command));
     Console.WriteLine("Успешно!");
-
+    
     // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
     ReceiverOptions receiverOptions = new ()
     {
-        AllowedUpdates = Array.Empty<UpdateType>() // receive all update types except ChatMember related updates
+        AllowedUpdates = new [] { UpdateType.Message, UpdateType.CallbackQuery },
+        ThrowPendingUpdates = true,
     };
 
     botClient.StartReceiving(updateHandler: HandleUpdateAsync,
@@ -126,7 +126,7 @@ try
                              receiverOptions: receiverOptions,
                              cancellationToken: cts.Token
                             );
-
+    
     while (true)
     {
         await Task.Delay(-1);
@@ -137,12 +137,31 @@ try
 
     async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
-        // Only process Message updates: https://core.telegram.org/bots/api#message
-        if (update.Message is not { } message)
-            return;
-        // Only process text messages
-        if (message.Text is not { } messageText)
-            return;
+        Message updateMessage;
+        switch (update.Type)
+        {
+            case UpdateType.Message:
+                updateMessage = update.Message;
+                break;
+            case UpdateType.CallbackQuery:
+                updateMessage = update.CallbackQuery.Message;
+                break;
+            default:
+                return;
+        }
+
+        switch (updateMessage.Type)
+        {
+            case MessageType.Text:
+                ProcessTextMessage(botClient, updateMessage, cancellationToken);
+                return;
+            case MessageType.Document:
+            case MessageType.Photo:
+                ProcessImageMessage(botClient, updateMessage, cancellationToken);
+                return;
+            default:
+                return;
+        }
 
         //TODO: получение студента по id телеграмм
         //TODO: если студент не найден и если сообщение содержит что то кроме цифр, просьба ввести номер зачётной книжки
@@ -151,28 +170,52 @@ try
         //TODO: если tgId пуст, сохранение текущего tgId с сообщением "успешно авторизовано"
         //TODO: если tgId занят, сообщение о том, что аккаунт занят
         //TODO: если студент найден, поиск и исполнение введённой команды
-        
-        Console.WriteLine($"{message.Chat.Id}: {message.From?.Id} {message.From?.Username}: {messageText}");
-        
-        if (message.Entities != null)
-            foreach (var entity in message.Entities)
+    }
+
+    async Task ProcessTextMessage(ITelegramBotClient botClient, Message message, CancellationToken cancellationToken)
+    {
+        var student = await HostApiAccess.GetStudentByTgID(message.Chat.Id);
+        if (student.ID == -1)
+        {
+            string[] messageTextSplitted = message.Text.Split(' ');
+            if (messageTextSplitted.Length != 2)
             {
-                if (entity.Type == MessageEntityType.BotCommand)
-                {
-                    if (messageText[0] == '/')
-                    {
-                        var commandText = string.Join("", messageText.TakeWhile(x => x != ' ').Skip(1));
-                        foreach (var command in commands)
-                        {
-                            if (command.Command.Command.Equals(commandText))
-                            {
-                                Console.WriteLine(await command.Execute(update));
-                                return;
-                            }
-                        }
-                    }
-                }
+                await botClient.SendTextMessageAsync(message.Chat.Id, "Для инструкций обратитесь к вашему старосте.");
+                return;
             }
+
+            if(await HostApiAccess.SetStudentTgID(messageTextSplitted[0], messageTextSplitted[1], message.Chat.Id))
+                await botClient.SendTextMessageAsync(message.Chat.Id, "Регистрация прошла успешно.");
+            else
+                await botClient.SendTextMessageAsync(message.Chat.Id, "Для инструкций обратитесь к вашему старосте.");
+            return;
+        }
+
+        if (message.Text.First() != '/') return;
+        
+        var messageFullCommand = string.Join("", message.Text.Skip(1)).Split(' ');
+        if (messageFullCommand.Length == 0) return;
+
+        commands.FirstOrDefault(x => x.Command.Command == messageFullCommand[0])?.Execute(new CommandContext()
+        {
+            Client = botClient,
+            Command = messageFullCommand[0],
+            Message = message,
+            Parameters = messageFullCommand.Length == 1 ? new[] { "" } : messageFullCommand.Skip(1).ToArray(),
+            User = student,
+        });
+    }
+
+    async Task ProcessImageMessage(ITelegramBotClient botClient, Message message, CancellationToken cancellationToken)
+    {
+        var student = await HostApiAccess.GetStudentByTgID(message.Chat.Id);
+        if (student.ID == -1)
+        {
+            await botClient.SendTextMessageAsync(message.Chat.Id, "Для инструкций обратитесь к вашему старосте.");
+            return;
+        }
+        
+        
     }
 
     Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
@@ -191,5 +234,6 @@ try
 catch (Exception e)
 {
     Console.WriteLine(e);
-    throw;
+    Console.WriteLine("Если ошибка появляется опять, повторите попытку позже.");
+    return;
 }
