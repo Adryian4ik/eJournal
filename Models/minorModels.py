@@ -1,7 +1,7 @@
 from .mainModels import *
 
 
-class Array(BaseModel):
+class StudentArray(BaseModel):
     array: list[Student]
 
 

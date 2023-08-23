@@ -8,7 +8,7 @@ from utils import *
 @app.get("/schedule/{groupId_}")
 async def get_schedule(groupId_: int):
     command = (f"SELECT S.id, L.name LessonName, week.name week, day.name day, "
-               f"S.numberOfLesson, lt.name LessonType, S.subgroup, S.dates "
+               f"S.numberOfLesson, lt.name LessonType, S.subgroup, S.dates, S.mask, S.auditorium "
                f"FROM Schedule S "
                f"join lesson_type lt on lt.id = S.type "
                f"join Lesson L on L.id = S.lessonId "
@@ -20,12 +20,22 @@ async def get_schedule(groupId_: int):
     cursor.row_factory = sqlite3.Row
     data = cursor.fetchall()
 
+    students = (cursor.execute(f"SELECT id from Student where groupId={groupId_} "
+                               f"order by id")
+                .fetchall())
     result = {"Верхняя": {"Понедельник": [], "Вторник": [], "Среда": [], "Четверг": [],
                           "Пятница": [], "Суббота": [], "Воскресение": []},
               "Нижняя": {"Понедельник": [], "Вторник": [], "Среда": [], "Четверг": [],
                          "Пятница": [], "Суббота": [], "Воскресение": []}}
     for elem in data:
         elem = dict(elem)
+        if elem['mask']:
+            elem['mask'] = get_student_from_mask(elem['mask'])
+            elem['subgroupStudents'] = []
+            for i, state in enumerate(elem['mask']):
+                if state:
+                    elem['subgroupStudents'].append(students[i]['id'])
+            elem.pop('mask')
         if elem['dates']:
             elem['dates'] = elem['dates'].split(',')
         if (len(result[elem['week']][elem['day']]) > 0 and
@@ -47,6 +57,8 @@ async def create_schedule(schedule_: Schedule, token: Annotated[str, Depends(oau
     if isinstance(schedule_.dates, list):
         schedule_.dates = ",".join(schedule_.dates)
     schedule_.id = lastId['Schedule']
+    if schedule_.subgroup:
+        schedule_.mask = make_mask(schedule_.mask)
 
     command = f"INSERT INTO 'Schedule' ({fields(schedule_)}) VALUES ({values(schedule_)})"
     cursor.execute(command)
@@ -62,6 +74,9 @@ async def update_lesson(id_: int, schedule_: Schedule,
     schedule_.id, schedule_.groupId = id_, bossGroupId
     if isinstance(schedule_.dates, list):
         schedule_.dates = ",".join(schedule_.dates)
+
+    if schedule_.subgroup:
+        schedule_.mask = make_mask(schedule_.mask)
 
     cursor.execute(f"SELECT groupId FROM Schedule WHERE id={id_}")
     checkId = cursor.fetchone()[0]

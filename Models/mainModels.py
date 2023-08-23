@@ -40,5 +40,4 @@ class Schedule(BaseModel):
     type: int
     subgroup: int = 0
     dates: list[str] | str | None = None
-
-
+    mask: list[int] | None

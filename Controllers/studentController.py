@@ -1,7 +1,7 @@
 from config import *
 from fastapi import Depends
 from utils import *
-from Models import Student, Array, Login, TgIdUpdate
+from Models import Student, StudentArray, Login, TgIdUpdate
 from typing import Annotated
 
 
@@ -33,9 +33,23 @@ async def get_student(id_: int):
 async def create_student(student_: Student, token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
     student_.groupId = bossGroupId
-    cursor.execute(f"SELECT * FROM 'Student' WHERE id={student_.id}")
-    if cursor.fetchone():
+    cursor.execute(f"select id from student where groupId={bossGroupId} order by id")
+    data = cursor.fetchall()
+    data = [value[0] for value in data]
+    cursor.execute(f"select id, mask from schedule where groupId={bossGroupId} "
+                   f"and subgroup != 0 order by id")
+    pairs = [[value[0], value[1]] for value in cursor.fetchall()]
+    if student_.id in data:
         raise HTTPException(status_code=409, detail="Студент с таким id уже существует")
+    index = 0
+    for i in data:
+        if student_.id > i:
+            index += 1
+        else:
+            break
+    for elem in pairs:
+        cursor.execute(f"update schedule set mask={insert_into_mask(elem[1], index)} "
+                       f"where id={elem[0]}")
     command = "INSERT INTO 'Student' (" + fields(student_) + ") VALUES (" + values(student_) + ")"
     cursor.execute(command)
     db.commit()
@@ -43,16 +57,30 @@ async def create_student(student_: Student, token: Annotated[str, Depends(oauth2
 
 
 @app.post("/students", status_code=201)
-async def create_students(items: Array, token: Annotated[str, Depends(oauth2_scheme)]):
+async def create_students(token: Annotated[str, Depends(oauth2_scheme)], items: StudentArray):
     bossGroupId = group_id(decode_token(token), cursor)
+    cursor.execute(f"select id, mask from schedule where groupId={bossGroupId} "
+                   f"and subgroup != 0 order by id")
+    pairs = [[value[0], value[1]] for value in cursor.fetchall()]
 
     errors = []
     for student_ in dict(items)['array']:
-        cursor.execute(f"SELECT * FROM 'Student' WHERE id={student_.id}")
-        if cursor.fetchone():
+        cursor.execute(f"select id from student where groupId={bossGroupId} order by id")
+        data = [value[0] for value in cursor.fetchall()]
+        if student_.id in data:
             errors.append(student_.id)
         else:
+            index = 0
+            for i in data:
+                if student_.id > i:
+                    index += 1
+                else:
+                    break
             student_.groupId = bossGroupId
+            for elem in pairs:
+                cursor.execute(f"update schedule set mask={insert_into_mask(elem[1], index)} "
+                               f"where id={elem[0]}")
+
             command = "INSERT INTO 'Student' (" + fields(student_) + ") VALUES (" + values(student_) + ")"
             cursor.execute(command)
     db.commit()
@@ -97,7 +125,7 @@ async def update_student(student_: Student, token: Annotated[str, Depends(oauth2
 
 
 @app.patch("/students")
-async def update_students(items: Array, token: Annotated[str, Depends(oauth2_scheme)]):
+async def update_students(items: StudentArray, token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
 
     errors, not_access = [], []
@@ -124,23 +152,50 @@ async def update_students(items: Array, token: Annotated[str, Depends(oauth2_sch
 @app.delete("/student")
 async def delete_student(student_: Student, token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
+    cursor.execute(f"select id, mask from schedule where groupId={bossGroupId} "
+                   f"and subgroup != 0 order by id")
+    pairs = [[value[0], value[1]] for value in cursor.fetchall()]
 
-    cursor.execute(f"SELECT groupId From 'Student' WHERE id = {student_.id}")
-    if bossGroupId != cursor.fetchone()[0]:
+    cursor.execute(f"select id from student where groupId={bossGroupId} order by id")
+    data = [value[0] for value in cursor.fetchall()]
+    if student_.id not in data:
         raise HTTPException(status_code=403)
 
+    index = 0
+    for i in data:
+        if student_.id > i:
+            index += 1
+        else:
+            break
+    for elem in pairs:
+        cursor.execute(f"update schedule set mask={delete_from_mask(elem[1], index)} "
+                       f"where id={elem[0]}")
     cursor.execute(f"DELETE FROM 'Student' WHERE id = {student_.id}")
     db.commit()
     return {"status": "Success"}
 
 
 @app.delete("/students")
-async def delete_students(items: Array, token: Annotated[str, Depends(oauth2_scheme)]):
+async def delete_students(items: StudentArray, token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
+    cursor.execute(f"select id, mask from schedule where groupId={bossGroupId} "
+                   f"and subgroup != 0 order by id")
+    pairs = [[value[0], value[1]] for value in cursor.fetchall()]
 
     for student_ in dict(items)['array']:
-        cursor.execute(f"SELECT groupId From 'Student' WHERE id = {student_.id}")
-        if bossGroupId == cursor.fetchone()[0]:
+        cursor.execute(f"select id from student where groupId={bossGroupId} order by id")
+        data = [value[0] for value in cursor.fetchall()]
+        if student_.id in data:
+            index = 0
+            for i in data:
+                if student_.id > i:
+                    index += 1
+                else:
+                    break
+            for elem in pairs:
+                cursor.execute(f"update schedule set mask={delete_from_mask(elem[1], index)} "
+                               f"where id={elem[0]}")
+
             cursor.execute(f"DELETE FROM 'Student' WHERE id = {student_.id}")
     db.commit()
     return {"status": "Success"}
@@ -150,7 +205,7 @@ async def delete_students(items: Array, token: Annotated[str, Depends(oauth2_sch
 async def get_group_info(token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
 
-    command = f"SELECT * FROM 'Student' WHERE groupId=={bossGroupId}\n"
+    command = f"SELECT * FROM 'Student' WHERE groupId=={bossGroupId} order by id"
     cursor.row_factory = sqlite3.Row
 
     cursor.execute(command)
