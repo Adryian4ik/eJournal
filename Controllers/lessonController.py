@@ -27,4 +27,3 @@ async def update_lesson(lesson_: Lesson, id_: int, token: Annotated[str, Depends
     cursor.execute(command)
     db.commit()
     return {"status": "Success"}
-

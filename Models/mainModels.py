@@ -41,3 +41,4 @@ class Schedule(BaseModel):
     subgroup: int = 0
     dates: list[str] | str | None = None
     mask: list[int] | None
+    auditorium: str | None = None

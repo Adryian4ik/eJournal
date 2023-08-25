@@ -53,12 +53,15 @@ async def create_schedule(schedule_: Schedule, token: Annotated[str, Depends(oau
     bossGroupId = group_id(decode_token(token), cursor)
     lastId['Schedule'] += 1
 
+    cursor.execute(f"select * from student where groupId = {bossGroupId} order by id")
+    students = [value[0] for value in cursor.fetchall()]
+
     schedule_.groupId = bossGroupId
     if isinstance(schedule_.dates, list):
         schedule_.dates = ",".join(schedule_.dates)
     schedule_.id = lastId['Schedule']
     if schedule_.subgroup:
-        schedule_.mask = make_mask(schedule_.mask)
+        schedule_.mask = make_mask(schedule_.mask, students)
 
     command = f"INSERT INTO 'Schedule' ({fields(schedule_)}) VALUES ({values(schedule_)})"
     cursor.execute(command)
@@ -71,12 +74,15 @@ async def update_lesson(id_: int, schedule_: Schedule,
                         token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
 
+    cursor.execute(f"select * from student where groupId = {bossGroupId} order by id")
+    students = [value[0] for value in cursor.fetchall()]
+
     schedule_.id, schedule_.groupId = id_, bossGroupId
     if isinstance(schedule_.dates, list):
         schedule_.dates = ",".join(schedule_.dates)
 
     if schedule_.subgroup:
-        schedule_.mask = make_mask(schedule_.mask)
+        schedule_.mask = make_mask(schedule_.mask, students)
 
     cursor.execute(f"SELECT groupId FROM Schedule WHERE id={id_}")
     checkId = cursor.fetchone()[0]

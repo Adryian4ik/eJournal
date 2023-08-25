@@ -34,19 +34,15 @@ async def create_student(student_: Student, token: Annotated[str, Depends(oauth2
     bossGroupId = group_id(decode_token(token), cursor)
     student_.groupId = bossGroupId
     cursor.execute(f"select id from student where groupId={bossGroupId} order by id")
-    data = cursor.fetchall()
-    data = [value[0] for value in data]
+    students = [value[0] for value in cursor.fetchall()]
+
     cursor.execute(f"select id, mask from schedule where groupId={bossGroupId} "
                    f"and subgroup != 0 order by id")
     pairs = [[value[0], value[1]] for value in cursor.fetchall()]
-    if student_.id in data:
+    within, index = get_index(student_.id, students)
+    if within:
         raise HTTPException(status_code=409, detail="Студент с таким id уже существует")
-    index = 0
-    for i in data:
-        if student_.id > i:
-            index += 1
-        else:
-            break
+
     for elem in pairs:
         cursor.execute(f"update schedule set mask={insert_into_mask(elem[1], index)} "
                        f"where id={elem[0]}")
@@ -66,16 +62,12 @@ async def create_students(token: Annotated[str, Depends(oauth2_scheme)], items: 
     errors = []
     for student_ in dict(items)['array']:
         cursor.execute(f"select id from student where groupId={bossGroupId} order by id")
-        data = [value[0] for value in cursor.fetchall()]
-        if student_.id in data:
+        students = [value[0] for value in cursor.fetchall()]
+        within, index = get_index(student_.id, students)
+
+        if within:
             errors.append(student_.id)
         else:
-            index = 0
-            for i in data:
-                if student_.id > i:
-                    index += 1
-                else:
-                    break
             student_.groupId = bossGroupId
             for elem in pairs:
                 cursor.execute(f"update schedule set mask={insert_into_mask(elem[1], index)} "
@@ -157,16 +149,12 @@ async def delete_student(student_: Student, token: Annotated[str, Depends(oauth2
     pairs = [[value[0], value[1]] for value in cursor.fetchall()]
 
     cursor.execute(f"select id from student where groupId={bossGroupId} order by id")
-    data = [value[0] for value in cursor.fetchall()]
-    if student_.id not in data:
+    students = [value[0] for value in cursor.fetchall()]
+    within, index = get_index(student_.id, students)
+
+    if not within:
         raise HTTPException(status_code=403)
 
-    index = 0
-    for i in data:
-        if student_.id > i:
-            index += 1
-        else:
-            break
     for elem in pairs:
         cursor.execute(f"update schedule set mask={delete_from_mask(elem[1], index)} "
                        f"where id={elem[0]}")
@@ -184,14 +172,10 @@ async def delete_students(items: StudentArray, token: Annotated[str, Depends(oau
 
     for student_ in dict(items)['array']:
         cursor.execute(f"select id from student where groupId={bossGroupId} order by id")
-        data = [value[0] for value in cursor.fetchall()]
-        if student_.id in data:
-            index = 0
-            for i in data:
-                if student_.id > i:
-                    index += 1
-                else:
-                    break
+        students = [value[0] for value in cursor.fetchall()]
+        within, index = get_index(student_.id, students)
+
+        if within:
             for elem in pairs:
                 cursor.execute(f"update schedule set mask={delete_from_mask(elem[1], index)} "
                                f"where id={elem[0]}")
@@ -205,9 +189,8 @@ async def delete_students(items: StudentArray, token: Annotated[str, Depends(oau
 async def get_group_info(token: Annotated[str, Depends(oauth2_scheme)]):
     bossGroupId = group_id(decode_token(token), cursor)
 
-    command = f"SELECT * FROM 'Student' WHERE groupId=={bossGroupId} order by id"
     cursor.row_factory = sqlite3.Row
-
+    command = f"SELECT * FROM 'Student' WHERE groupId=={bossGroupId} order by id"
     cursor.execute(command)
     data = cursor.fetchall()
     if len(data) == 0:

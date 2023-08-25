@@ -67,10 +67,10 @@ def group_id(decoded, cursor):
     return checkId[0]
 
 
-def make_mask(array):
+def make_mask(incValues, array):
     result = 0
     for i, value in enumerate(array):
-        result = result | value << i
+        result = result | (value in incValues) << i
     return result
 
 
@@ -87,3 +87,14 @@ def delete_from_mask(mask, position):
 def get_student_from_mask(mask):
     temp = bin(mask)[2:]
     return [int(value) for value in reversed(temp)]
+
+
+def get_index(value, array):
+    index = 0
+    for i in array:
+        if value > i:
+            index += 1
+        elif value == i:
+            return True, index
+        else:
+            return False, index
