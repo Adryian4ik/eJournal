@@ -1,6 +1,7 @@
 ﻿using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
+using Telegram.Bot.Requests;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
@@ -51,6 +52,7 @@ try
             await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
                                               _context.User.ToString(),
                                               cancellationToken: cts.Token);
+            await Task.Delay(-1);
         }
         catch (Exception e)
         {
@@ -88,24 +90,31 @@ try
                                         {
                                             try
                                             {
-                                                DateTime date;
-                                                if (!DateTime.TryParse(_context.Message.Text.Split(' ')[^1], out date))
-                                                    return false;
+                                                //DateTime date;
+                                                /*if (!DateTime.TryParse(_context.Message.Text.Split(' ')[^1], out date))
+                                                    return false;*/
                                                 //var passes = await HostApiAccess.GetPasses(_context.User.ID, date);
                                                 //string answer = string.Join("\n\n", passes.Select(x => x.ToString()));
 
-                                                string answer = "";
-                                                
-                                                if (string.IsNullOrWhiteSpace(answer)) answer = "Пропусков нет";
-                                                
-                                                var result = await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
-                                                 answer,
+                                                var dates = Enumerable.Range(DateOnly.FromDateTime(DateTime.Now).DayNumber - DateTime.Now.Day + 1, DateTime.Now.Day).Chunk(3).Select(x => x.Select(y => new KeyboardButton(DateOnly.FromDayNumber(y).ToString("dd.MM.yyyy"))));
+                                                ReplyKeyboardMarkup markupKeyboard = new ReplyKeyboardMarkup(dates);
+
+                                                await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
+                                                 "Выберите дату из списка ниже", replyMarkup: markupKeyboard,
                                                  cancellationToken: cts.Token);
                                             }
                                             catch (Exception e)
                                             {
                                                 Console.WriteLine(e);
                                                 return false;
+                                            }
+                                            finally
+                                            {
+                                                /*var message = await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id, "Удаление клавиатуры...",
+                                                 replyMarkup: new ReplyKeyboardRemove(),
+                                                 cancellationToken: cts.Token);
+                                                await _context.Client.DeleteMessageAsync(_context.Message.Chat.Id,
+                                                 message.MessageId, cts.Token);*/
                                             }
 
                                             return true;
@@ -120,7 +129,7 @@ try
         AllowedUpdates = new [] { UpdateType.Message, UpdateType.CallbackQuery },
         ThrowPendingUpdates = true,
     };
-
+    
     botClient.StartReceiving(updateHandler: HandleUpdateAsync,
                              pollingErrorHandler: HandlePollingErrorAsync,
                              receiverOptions: receiverOptions,
@@ -137,14 +146,16 @@ try
 
     async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
+        Console.WriteLine(update);
+        
         Message updateMessage;
         switch (update.Type)
         {
             case UpdateType.Message:
-                updateMessage = update.Message;
+                updateMessage = update.Message!;
                 break;
             case UpdateType.CallbackQuery:
-                updateMessage = update.CallbackQuery.Message;
+                updateMessage = update.CallbackQuery!.Message!;
                 break;
             default:
                 return;
@@ -153,11 +164,11 @@ try
         switch (updateMessage.Type)
         {
             case MessageType.Text:
-                ProcessTextMessage(botClient, updateMessage, cancellationToken);
+                await ProcessTextMessage(botClient, updateMessage, cancellationToken);
                 return;
             case MessageType.Document:
             case MessageType.Photo:
-                ProcessImageMessage(botClient, updateMessage, cancellationToken);
+                await ProcessImageMessage(botClient, updateMessage, cancellationToken);
                 return;
             default:
                 return;
