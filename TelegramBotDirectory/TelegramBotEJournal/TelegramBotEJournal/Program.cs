@@ -113,6 +113,38 @@ try
                                             return true;
                                         }));
     
+    commands.Add(new TelegramBotCommand(botClient, "schedule", "Информация о расписании за определенный день",
+        async (_context) =>
+        {
+            try
+            {
+                if (!DateOnly.TryParse(_context.Parameters.FirstOrDefault(),
+                        out var date)) return false;
+
+                var schedule = await HostApiAccess.GetStudentSchedule(_context.User.GroupID);
+
+                string result = string.Join("\n",
+                    schedule.Select(x => 
+                        $"{x.Key}\n{string.Join("\n", x.Value.Select(x => 
+                            $"{x.Key}\n{string.Join("\n", x.Value.Select(x => 
+                                $"{x.ToString()}"))}"))
+                        }\n\n")
+                    );
+                if (string.IsNullOrWhiteSpace(result)) result = "Расписания нету";
+
+                await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
+                    result,
+                    cancellationToken: cts.Token);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                return false;
+            }
+
+            return true;
+        }));
+    
     commands.Add(new TelegramBotCommand(botClient, "currentmonthkeyboard", "Перенести клавиатуру на текущий месяц", async (_context) =>
     {
         try
@@ -123,7 +155,7 @@ try
             currentUserDate = userdates[_context.User.ID];
             
             await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
-                "Клавиатура обновлена",
+                $"Клавиатура обновлена.\nВыбранный месяц: {currentUserDate.ToString("MM.yyyy")}",
                 replyMarkup: await GenerateReplyKeyboardByDate(currentUserDate),
                 cancellationToken: cts.Token);
         }
@@ -145,7 +177,7 @@ try
             currentUserDate = userdates[_context.User.ID];
             
             await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
-                $"Выбранный месяц: {currentUserDate.ToString("MM.yyyy")}",
+                $"Клавиатура обновлена.\nВыбранный месяц: {currentUserDate.ToString("MM.yyyy")}",
                 replyMarkup: await GenerateReplyKeyboardByDate(currentUserDate),
                 cancellationToken: cts.Token);
         }
@@ -217,7 +249,8 @@ try
     
     while (true)
     {
-        await Task.Delay(-1);
+        await Task.Delay(new TimeSpan(3, 0, 0));
+        userdates.Clear();
     }
 
     // Send cancellation request to stop bot
@@ -275,8 +308,15 @@ try
                 return;
             }
 
-            if(await HostApiAccess.SetStudentTgID(messageTextSplitted[0], messageTextSplitted[1], message.Chat.Id))
+            if (await HostApiAccess.SetStudentTgID(messageTextSplitted[0], messageTextSplitted[1], message.Chat.Id))
+            {
                 await botClient.SendTextMessageAsync(message.Chat.Id, "Регистрация прошла успешно.");
+                var context = new CommandContext();
+                context.User = student;
+                context.Client = botClient;
+                context.Message = message;
+                commands.FirstOrDefault(x => x.Command.Command == "currentmonthkeyboard")?.Execute(context);
+            }
             else
                 await botClient.SendTextMessageAsync(message.Chat.Id, "Для инструкций обратитесь к вашему старосте.");
             return;
@@ -317,8 +357,27 @@ try
                         context.Message = message;
                         commands.FirstOrDefault(x => x.Command.Command == "nextmonthkeyboard")?.Execute(context);
                         return;
-                    default:
+                    case "Сейчас":
+                        context = new CommandContext();
+                        context.User = student;
+                        context.Client = botClient;
+                        context.Message = message;
+                        commands.FirstOrDefault(x => x.Command.Command == "currentmonthkeyboard")?.Execute(context);
                         return;
+                    default:
+                        if (!int.TryParse(message.Text, out int day)) return;
+                        if (!userdates.ContainsKey(student.ID))
+                        {
+                            context = new CommandContext();
+                            context.User = student;
+                            context.Client = botClient;
+                            context.Message = message;
+                            commands.FirstOrDefault(x => x.Command.Command == "currentmonthkeyboard")?.Execute(context);
+                        }
+
+                        date = new DateOnly(userdates[student.ID].Year, userdates[student.ID].Month, day);
+
+                        break;
                 }
             }
 
@@ -368,12 +427,43 @@ try
     {
         var buttPrev = new KeyboardButton("Назад");
         var buttUpdate = new KeyboardButton("Обновить");
-        var buttNext = new KeyboardButton("Вперёд"); 
+        var buttNext = new KeyboardButton("Вперёд");
+        var buttCurr = new KeyboardButton("Сейчас");
+
+        List<KeyboardButton> enumKey = new List<KeyboardButton>(35);
+
+        var firstDay = new DateOnly(date.Year, date.Month, 1);
+        switch (firstDay.DayOfWeek)
+        {
+            case (DayOfWeek)0:
+                enumKey.AddRange(Enumerable.Repeat(new KeyboardButton("\n"), 6));
+                break;
+            default:
+                enumKey.AddRange(Enumerable.Repeat(new KeyboardButton("\n"), (byte)firstDay.DayOfWeek - 1));
+                break;
+        }
         
-        return new ReplyKeyboardMarkup(Enumerable.Range(1, DateTime.DaysInMonth(date.Year, date.Month))
+        enumKey.AddRange(Enumerable.Range(1, DateTime.DaysInMonth(date.Year, date.Month))
+            .Select(x => new DateOnly(date.Year, date.Month, x))
+            .Select(x => new KeyboardButton(x.ToString("dd"))));
+        
+        var lastDay = new DateOnly(date.Year, date.Month, DateTime.DaysInMonth(date.Year, date.Month));
+        switch (lastDay.DayOfWeek)
+        {
+            case (DayOfWeek)0:
+                break;
+            default:
+                enumKey.AddRange(Enumerable.Repeat(new KeyboardButton("\n"), 7 - (byte)lastDay.DayOfWeek));
+                break;
+        }
+
+        return new ReplyKeyboardMarkup(enumKey.Chunk(7).Append(new[] { buttPrev, buttUpdate, buttNext })
+            .Append(new[] { buttCurr }));
+
+        /*return new ReplyKeyboardMarkup(Enumerable.Range(1, DateTime.DaysInMonth(date.Year, date.Month))
             .Select(x => new DateOnly(date.Year, date.Month, x))
             .Select(x => new KeyboardButton(x.ToString("dd"))).Prepend(buttNext).Prepend(buttUpdate)
-            .Prepend(buttPrev).Chunk(7));
+            .Prepend(buttPrev).Chunk(7));*/
     }
     
     Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
