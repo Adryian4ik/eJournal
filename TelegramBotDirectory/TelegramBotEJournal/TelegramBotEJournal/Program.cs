@@ -1,4 +1,5 @@
-﻿using Telegram.Bot;
+﻿using System.Text.Json;
+using Telegram.Bot;
 using Telegram.Bot.Exceptions;
 using Telegram.Bot.Polling;
 using Telegram.Bot.Requests;
@@ -11,6 +12,8 @@ using TelegramBotEJournal.Entities;
 
 try
 {
+    Dictionary<long, DateOnly> userdates = new();
+    
     var tokenPath = Path.Combine(Environment.CurrentDirectory, "Token");
     if (!System.IO.File.Exists(tokenPath) || string.IsNullOrWhiteSpace(System.IO.File.ReadAllText(tokenPath)))
     {
@@ -52,7 +55,6 @@ try
             await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
                                               _context.User.ToString(),
                                               cancellationToken: cts.Token);
-            await Task.Delay(-1);
         }
         catch (Exception e)
         {
@@ -90,35 +92,112 @@ try
                                         {
                                             try
                                             {
-                                                //DateTime date;
-                                                /*if (!DateTime.TryParse(_context.Message.Text.Split(' ')[^1], out date))
-                                                    return false;*/
-                                                //var passes = await HostApiAccess.GetPasses(_context.User.ID, date);
-                                                //string answer = string.Join("\n\n", passes.Select(x => x.ToString()));
+                                                if (!DateOnly.TryParse(_context.Parameters.FirstOrDefault(),
+                                                        out var date)) return false;
 
-                                                var dates = Enumerable.Range(DateOnly.FromDateTime(DateTime.Now).DayNumber - DateTime.Now.Day + 1, DateTime.Now.Day).Chunk(3).Select(x => x.Select(y => new KeyboardButton(DateOnly.FromDayNumber(y).ToString("dd.MM.yyyy"))));
-                                                ReplyKeyboardMarkup markupKeyboard = new ReplyKeyboardMarkup(dates);
+                                                var passes = await HostApiAccess.GetPassesByStudentID(_context.User.ID, date, date);
+
+                                                string result = string.Join(" ", passes.Select(x => x.ToString()));
+                                                if (string.IsNullOrWhiteSpace(result)) result = "Пропусков нет";
 
                                                 await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
-                                                 "Выберите дату из списка ниже", replyMarkup: markupKeyboard,
-                                                 cancellationToken: cts.Token);
+                                                    result,
+                                                    cancellationToken: cts.Token);
                                             }
                                             catch (Exception e)
                                             {
                                                 Console.WriteLine(e);
                                                 return false;
                                             }
-                                            finally
-                                            {
-                                                /*var message = await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id, "Удаление клавиатуры...",
-                                                 replyMarkup: new ReplyKeyboardRemove(),
-                                                 cancellationToken: cts.Token);
-                                                await _context.Client.DeleteMessageAsync(_context.Message.Chat.Id,
-                                                 message.MessageId, cts.Token);*/
-                                            }
 
                                             return true;
                                         }));
+    
+    commands.Add(new TelegramBotCommand(botClient, "currentmonthkeyboard", "Перенести клавиатуру на текущий месяц", async (_context) =>
+    {
+        try
+        {
+            DateOnly currentUserDate;
+            if (!userdates.ContainsKey(_context.User.ID)) userdates.Add(_context.User.ID, DateOnly.FromDateTime(DateTime.Now));
+            userdates[_context.User.ID] = DateOnly.FromDateTime(DateTime.Now);
+            currentUserDate = userdates[_context.User.ID];
+            
+            await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
+                "Клавиатура обновлена",
+                replyMarkup: await GenerateReplyKeyboardByDate(currentUserDate),
+                cancellationToken: cts.Token);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            return false;
+        }
+        return true;
+    }));
+    
+    commands.Add(new TelegramBotCommand(botClient, "updatekeyboard", "Обновить клавиатуру дат", async (_context) =>
+    {
+        try
+        {
+            DateOnly currentUserDate;
+            if (!userdates.ContainsKey(_context.User.ID)) userdates.Add(_context.User.ID, DateOnly.FromDateTime(DateTime.Now));
+            
+            currentUserDate = userdates[_context.User.ID];
+            
+            await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
+                $"Выбранный месяц: {currentUserDate.ToString("MM.yyyy")}",
+                replyMarkup: await GenerateReplyKeyboardByDate(currentUserDate),
+                cancellationToken: cts.Token);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            return false;
+        }
+        return true;
+    }));
+    
+    commands.Add(new TelegramBotCommand(botClient, "prevmonthkeyboard", "Предыдущий месяц", async (_context) =>
+    {
+        try
+        {
+            DateOnly currentUserDate;
+            if (!userdates.ContainsKey(_context.User.ID)) userdates.Add(_context.User.ID, DateOnly.FromDateTime(DateTime.Now));
+            userdates[_context.User.ID] = userdates[_context.User.ID].AddMonths(-1);
+            currentUserDate = userdates[_context.User.ID];
+            
+            await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
+                $"Выбранный месяц: {currentUserDate.ToString("MM.yyyy")}", replyMarkup: await GenerateReplyKeyboardByDate(currentUserDate),
+                cancellationToken: cts.Token);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            return false;
+        }
+        return true;
+    }));
+    
+    commands.Add(new TelegramBotCommand(botClient, "nextmonthkeyboard", "Следующий месяц", async (_context) =>
+    {
+        try
+        {
+            DateOnly currentUserDate;
+            if (!userdates.ContainsKey(_context.User.ID)) userdates.Add(_context.User.ID, DateOnly.FromDateTime(DateTime.Now));
+            userdates[_context.User.ID] = userdates[_context.User.ID].AddMonths(1);
+            currentUserDate = userdates[_context.User.ID];
+            
+            await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
+                $"Выбранный месяц: {currentUserDate.ToString("MM.yyyy")}", replyMarkup: await GenerateReplyKeyboardByDate(currentUserDate),
+                cancellationToken: cts.Token);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e);
+            return false;
+        }
+        return true;
+    }));
     
     await botClient.SetMyCommandsAsync(commands.Select(x => x.Command));
     Console.WriteLine("Успешно!");
@@ -146,8 +225,6 @@ try
 
     async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
     {
-        Console.WriteLine(update);
-        
         Message updateMessage;
         switch (update.Type)
         {
@@ -155,11 +232,14 @@ try
                 updateMessage = update.Message!;
                 break;
             case UpdateType.CallbackQuery:
-                updateMessage = update.CallbackQuery!.Message!;
+                updateMessage = update.CallbackQuery.Message;
+                updateMessage.Text = update.CallbackQuery.Data;
                 break;
             default:
                 return;
         }
+        
+        Console.WriteLine(updateMessage.From.Username + " " + updateMessage.Text);
 
         switch (updateMessage.Type)
         {
@@ -202,19 +282,74 @@ try
             return;
         }
 
+        if(message.Text[0] == '/')
+        {
+            await ProcessBotCommand(botClient, message, student, cancellationToken);
+        }
+        else
+        {
+            var messageDate = message.Text.Split(' ').FirstOrDefault() ?? "";
+            if (string.IsNullOrWhiteSpace(messageDate)) return;
+
+            if (!DateOnly.TryParse(messageDate, out DateOnly date))
+            {
+                CommandContext context;
+                switch (message.Text)
+                {
+                    case "Назад":
+                        context = new CommandContext();
+                        context.User = student;
+                        context.Client = botClient;
+                        context.Message = message;
+                        commands.FirstOrDefault(x => x.Command.Command == "prevmonthkeyboard")?.Execute(context);
+                        return;
+                    case "Обновить":
+                        context = new CommandContext();
+                        context.User = student;
+                        context.Client = botClient;
+                        context.Message = message;
+                        commands.FirstOrDefault(x => x.Command.Command == "updatekeyboard")?.Execute(context);
+                        return;
+                    case "Вперёд":
+                        context = new CommandContext();
+                        context.User = student;
+                        context.Client = botClient;
+                        context.Message = message;
+                        commands.FirstOrDefault(x => x.Command.Command == "nextmonthkeyboard")?.Execute(context);
+                        return;
+                    default:
+                        return;
+                }
+            }
+
+            InlineKeyboardButton[] ikb = new[]
+            {
+                InlineKeyboardButton.WithCallbackData("Расписание дня", "not implemented"),
+                InlineKeyboardButton.WithCallbackData("Пропуски за день", $"/passes {date.ToString()}"),
+            };
+            InlineKeyboardMarkup keymark = new InlineKeyboardMarkup(ikb);
+            
+            await botClient.SendTextMessageAsync(message.Chat.Id, date.ToString("dd.MM.yyyy"), 
+                replyMarkup: keymark,
+                cancellationToken: cancellationToken);
+        }
+    }
+
+    async Task ProcessBotCommand(ITelegramBotClient botClient, Message message, Student student, CancellationToken cancellationToken)
+    {
         if (message.Text.First() != '/') return;
         
         var messageFullCommand = string.Join("", message.Text.Skip(1)).Split(' ');
         if (messageFullCommand.Length == 0) return;
 
-        commands.FirstOrDefault(x => x.Command.Command == messageFullCommand[0])?.Execute(new CommandContext()
+        await (commands.FirstOrDefault(x => x.Command.Command == messageFullCommand[0])?.Execute(new CommandContext()
         {
             Client = botClient,
             Command = messageFullCommand[0],
             Message = message,
             Parameters = messageFullCommand.Length == 1 ? new[] { "" } : messageFullCommand.Skip(1).ToArray(),
             User = student,
-        });
+        }) ?? Task.CompletedTask);
     }
 
     async Task ProcessImageMessage(ITelegramBotClient botClient, Message message, CancellationToken cancellationToken)
@@ -229,6 +364,18 @@ try
         
     }
 
+    async Task<ReplyKeyboardMarkup> GenerateReplyKeyboardByDate(DateOnly date)
+    {
+        var buttPrev = new KeyboardButton("Назад");
+        var buttUpdate = new KeyboardButton("Обновить");
+        var buttNext = new KeyboardButton("Вперёд"); 
+        
+        return new ReplyKeyboardMarkup(Enumerable.Range(1, DateTime.DaysInMonth(date.Year, date.Month))
+            .Select(x => new DateOnly(date.Year, date.Month, x))
+            .Select(x => new KeyboardButton(x.ToString("dd"))).Prepend(buttNext).Prepend(buttUpdate)
+            .Prepend(buttPrev).Chunk(7));
+    }
+    
     Task HandlePollingErrorAsync(ITelegramBotClient botClient, Exception exception, CancellationToken cancellationToken)
     {
         var ErrorMessage = exception switch
