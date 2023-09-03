@@ -123,25 +123,23 @@ try
 
                 var schedule = await HostApiAccess.GetStudentSchedule(_context.User.GroupID);
 
-                /*string result = string.Join("\n",
-                    schedule.Select(x =>
-                        $"{x.Key}\n{string.Join("\n", x.Value.Select(x =>
-                            $"{x.Key}\n{string.Join("\n", x.Value.Select(x =>
-                                string.Join("\n", x.Select(x => x.ToString()))))}"))
-                        }\n\n")
-                    );*/
-
                 var startDate = new DateOnly(date.Month < 9 ? date.Year - 1 : date.Year, 9, 1);
+                startDate = startDate.AddDays(startDate.DayOfWeek switch
+                {
+                    DayOfWeek.Friday => -4,
+                    DayOfWeek.Monday => 0,
+                    DayOfWeek.Saturday => -5,
+                    DayOfWeek.Sunday => -6,
+                    DayOfWeek.Thursday => -3,
+                    DayOfWeek.Tuesday => -1,
+                    DayOfWeek.Wednesday => -2,
+                });
                 var deltaTime = date.ToDateTime(TimeOnly.MinValue) - startDate.ToDateTime(TimeOnly.MinValue);
                 var weekType =
                     (new DateOnly(new DateTime(deltaTime.Ticks).Year, new DateTime(deltaTime.Ticks).Month,
                         new DateTime(deltaTime.Ticks).Day).DayNumber / 7) % 2 == 0
                         ? "Верхняя"
                         : "Нижняя";
-                /*string result =
-                    $"Неделя - {weekType}\n{string.Join("\n", schedule[weekType].Select(x =>
-                        $"{x.Key}\n{string.Join("\n", x.Value.Select(x =>
-                            string.Join("\n", x.Select(x => x.ToString()))))}"))}";*/
 
                 string dayOfWeek = date.DayOfWeek switch
                 {
@@ -149,13 +147,13 @@ try
                     DayOfWeek.Monday => "Понедельник",
                     DayOfWeek.Saturday => "Суббота",
                     DayOfWeek.Sunday => "Воскресение",
-                    DayOfWeek.Thursday => "Пятница",
+                    DayOfWeek.Thursday => "Четверг",
                     DayOfWeek.Tuesday => "Вторник",
                     DayOfWeek.Wednesday => "Среда",
                 };
 
                 string lessons = string.Join("\n",
-                    schedule[weekType][dayOfWeek].Select(x => string.Join(" ", x.Select(x => x.ToString()))));
+                    schedule[weekType][dayOfWeek].Select(x => string.Join("\n", x.Where(x => x.Students is null ? true : x.Students.Any(x => x == _context.User.ID)).Select(x => x.ToString()))));
                 
                 string result =
                     $"Неделя - {weekType}\n{dayOfWeek}\n{(string.IsNullOrWhiteSpace(lessons) ? "Пар нет" : lessons)}";
@@ -264,7 +262,6 @@ try
     await botClient.SetMyCommandsAsync(commands.Select(x => x.Command));
     Console.WriteLine("Успешно!");
     
-    // StartReceiving does not block the caller thread. Receiving is done on the ThreadPool.
     ReceiverOptions receiverOptions = new ()
     {
         AllowedUpdates = new [] { UpdateType.Message, UpdateType.CallbackQuery },
@@ -284,7 +281,6 @@ try
         GC.Collect();
     }
 
-    // Send cancellation request to stop bot
     cts.Cancel();
 
     async Task HandleUpdateAsync(ITelegramBotClient botClient, Update update, CancellationToken cancellationToken)
