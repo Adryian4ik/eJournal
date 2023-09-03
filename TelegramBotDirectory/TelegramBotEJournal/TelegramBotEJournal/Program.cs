@@ -123,13 +123,43 @@ try
 
                 var schedule = await HostApiAccess.GetStudentSchedule(_context.User.GroupID);
 
-                string result = string.Join("\n",
-                    schedule.Select(x => 
-                        $"{x.Key}\n{string.Join("\n", x.Value.Select(x => 
-                            $"{x.Key}\n{string.Join("\n", x.Value.Select(x => 
-                                $"{x.ToString()}"))}"))
+                /*string result = string.Join("\n",
+                    schedule.Select(x =>
+                        $"{x.Key}\n{string.Join("\n", x.Value.Select(x =>
+                            $"{x.Key}\n{string.Join("\n", x.Value.Select(x =>
+                                string.Join("\n", x.Select(x => x.ToString()))))}"))
                         }\n\n")
-                    );
+                    );*/
+
+                var startDate = new DateOnly(date.Month < 9 ? date.Year - 1 : date.Year, 9, 1);
+                var deltaTime = date.ToDateTime(TimeOnly.MinValue) - startDate.ToDateTime(TimeOnly.MinValue);
+                var weekType =
+                    (new DateOnly(new DateTime(deltaTime.Ticks).Year, new DateTime(deltaTime.Ticks).Month,
+                        new DateTime(deltaTime.Ticks).Day).DayNumber / 7) % 2 == 0
+                        ? "Верхняя"
+                        : "Нижняя";
+                /*string result =
+                    $"Неделя - {weekType}\n{string.Join("\n", schedule[weekType].Select(x =>
+                        $"{x.Key}\n{string.Join("\n", x.Value.Select(x =>
+                            string.Join("\n", x.Select(x => x.ToString()))))}"))}";*/
+
+                string dayOfWeek = date.DayOfWeek switch
+                {
+                    DayOfWeek.Friday => "Пятница",
+                    DayOfWeek.Monday => "Понедельник",
+                    DayOfWeek.Saturday => "Суббота",
+                    DayOfWeek.Sunday => "Воскресение",
+                    DayOfWeek.Thursday => "Пятница",
+                    DayOfWeek.Tuesday => "Вторник",
+                    DayOfWeek.Wednesday => "Среда",
+                };
+
+                string lessons = string.Join("\n",
+                    schedule[weekType][dayOfWeek].Select(x => string.Join(" ", x.Select(x => x.ToString()))));
+                
+                string result =
+                    $"Неделя - {weekType}\n{dayOfWeek}\n{(string.IsNullOrWhiteSpace(lessons) ? "Пар нет" : lessons)}";
+                
                 if (string.IsNullOrWhiteSpace(result)) result = "Расписания нету";
 
                 await _context.Client.SendTextMessageAsync(_context.Message.Chat.Id,
@@ -251,6 +281,7 @@ try
     {
         await Task.Delay(new TimeSpan(3, 0, 0));
         userdates.Clear();
+        GC.Collect();
     }
 
     // Send cancellation request to stop bot
@@ -383,7 +414,7 @@ try
 
             InlineKeyboardButton[] ikb = new[]
             {
-                InlineKeyboardButton.WithCallbackData("Расписание дня", "not implemented"),
+                InlineKeyboardButton.WithCallbackData("Расписание дня", $"/schedule {date.ToString()}"),
                 InlineKeyboardButton.WithCallbackData("Пропуски за день", $"/passes {date.ToString()}"),
             };
             InlineKeyboardMarkup keymark = new InlineKeyboardMarkup(ikb);

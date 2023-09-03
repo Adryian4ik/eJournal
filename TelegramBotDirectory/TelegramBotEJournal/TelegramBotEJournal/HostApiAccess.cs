@@ -78,11 +78,44 @@ public static class HostApiAccess
         if (response.StatusCode != HttpStatusCode.OK) return null;
 
         var responseStr = await response.Content.ReadAsStringAsync();
-        var objResponse = JsonSerializer.Deserialize<ResponseObject<Dictionary<string, Dictionary<string, Lesson[][]>>>>(await response.Content.ReadAsStringAsync())?.detail;
+        var objResponse = JsonSerializer.Deserialize<ResponseObject<Dictionary<string, Dictionary<string, JsonElement>>>>(await response.Content.ReadAsStringAsync())?.detail;
 
         if (objResponse is null) return null;
+
+        var result = new Dictionary<string, Dictionary<string, Lesson[][]>>();
+        foreach (var i in objResponse)
+        {
+            Dictionary<string, Lesson[][]> buf1 = new Dictionary<string, Lesson[][]>();
+            foreach (var j in i.Value)
+            {
+                List<List<Lesson>> buf2 = new List<List<Lesson>>();
+                switch (j.Value.ValueKind)
+                {
+                    case JsonValueKind.Array:
+                        var enumer = j.Value.EnumerateArray().ToArray();
+                        List<Lesson> buf3 = new List<Lesson>();
+                        
+                        foreach (var k in enumer)
+                        {
+                            switch (k.ValueKind)
+                            {
+                                case JsonValueKind.Array:
+                                    buf3.AddRange(k.EnumerateArray().ToArray().Select(x => JsonSerializer.Deserialize<Lesson>(x)));
+                                    break;
+                                case JsonValueKind.Object:
+                                    buf3.Add(JsonSerializer.Deserialize<Lesson>(k));
+                                    break;
+                            }
+                        }
+                        buf2.Add(buf3);
+                        break;
+                }
+                buf1.Add(j.Key, buf2.Select(x => x.ToArray()).ToArray());
+            }
+            result.Add(i.Key, buf1);
+        }
         
-        return objResponse;
+        return result;
     }
 }
 
